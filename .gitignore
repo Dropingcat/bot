@@ -1,0 +1,22 @@
+# Logs
+logs/
+*.log
+
+# Temporary files
+temp/
+*.tmp
+
+# Data caches
+data/*.png
+data/*.html
+data/*.json
+
+# IDE
+.vscode/
+.idea/
+*.pyc
+__pycache__/
+
+# Secrets
+config/secrets.py
+.env

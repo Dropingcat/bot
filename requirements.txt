@@ -1,0 +1,11 @@
+# Project dependencies
+python-telegram-bot==20.8
+requests==2.31.0
+numpy==1.24.3
+matplotlib==3.7.2
+aiofiles==23.1.0
+python-dotenv==1.0.1
+contextily==2.2.1
+matplotlib
+os
+scipy

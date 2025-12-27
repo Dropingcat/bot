@@ -1,0 +1,498 @@
+project_root/
+├── bot.py                    # Основной файл бота + менеджер процессов
+├── process_manager.py        # НОВОЕ: Центральный менеджер фоновых процессов
+├── config/                   # Конфигурационные файлы
+│   ├── bot_config.py
+│   ├── db_config.py
+│   ├── process_config.py     # НОВОЕ: Настройки процессов и таймаутов
+│   └── logging_config.py     # НОВОЕ: Конфиг логирования
+├── core/                     # Ядро проекта
+│   ├── db/                   # Модули работы с БД
+│   │   ├── central_db.py     # Работа с ЦБД (пользователи, профили, растения)
+│   │   ├── local_db_weather.py # Локал БД погоды
+│   │   ├── local_db_meteo.py # Локал БД метео-влияний
+│   │   ├── local_db_atmosphere.py # Локал БД атмосферы
+│   │   ├── local_db_agro.py  # Локал БД агропрогноза
+│   │   └── process_log_db.py # НОВОЕ: Логирование процессов
+│   ├── models/               # ML-модели
+│   │   ├── meteo_model.py    # Модель влияния погоды
+│   │   ├── agro_model.py     # Модель агропрогноза
+│   │   └── health_predictor.py # НОВОЕ: Модель прогноза самочувствия
+│   ├── utils/                # Вспомогательные утилиты
+│   │   ├── api_client.py     # Обёртка для API-запросов
+│   │   ├── data_processor.py # Обработка данных
+│   │   ├── coordinate_manager.py # НОВОЕ: Управление координатами
+│   │   ├── error_handler.py  # НОВОЕ: Центральный обработчик ошибок
+│   │   ├── validator.py      # НОВОЕ: Валидация данных
+│   │   └── cache_manager.py  # НОВОЕ: Управление кэшированием
+│   └── monitoring/           # НОВОЕ: Системы мониторинга
+│       ├── health_checker.py # Проверка состояния системы
+│       ├── performance_monitor.py # Мониторинг производительности
+│       └── anomaly_detector.py # Детектор аномалий
+├── scripts/                  # Центральные исполнительные скрипты
+│   ├── weather/              # Модуль "Погода"
+│   │   ├── weather_today_script.py
+│   │   ├── weather_forecast_script.py
+│   │   ├── weather_graph_script.py
+│   │   ├── baric_map_daily_script.py
+│   │   ├── baric_map_weekly_script.py
+│   │   ├── __init__.py       # НОВОЕ: Инициализация модуля
+│   │   └── _processes/       # НОВОЕ: Подпроцессы погоды
+│   │       ├── data_fetcher.py # Получение данных
+│   │       ├── validator.py  # Валидация
+│   │       ├── interpolator.py # Интерполяция
+│   │       └── formatter.py  # Форматирование результата
+│   ├── meteo/                # Модуль "Метео"
+│   │   ├── user_profile_script.py
+│   │   ├── impact_forecast_script.py
+│   │   ├── front_forecast_script.py
+│   │   ├── baric_anomaly_script.py
+│   │   ├── __init__.py
+│   │   └── _processes/       # НОВОЕ: Подпроцессы метео
+│   │       ├── front_analyzer.py # Анализ фронтов
+│   │       ├── stress_calculator.py # Расчет стресс-индекса
+│   │       ├── health_predictor.py # Прогноз самочувствия
+│   │       └── alarm_system.py # Система оповещений
+│   ├── atmosphere/           # Модуль "Атмосфера"
+│   │   ├── moon_phase_script.py
+│   │   ├── sky_transparency_script.py
+│   │   ├── light_pollution_script.py
+│   │   ├── __init__.py
+│   │   └── _processes/       # НОВОЕ: Подпроцессы атмосферы
+│   │       ├── phase_calculator.py # Расчет фаз
+│   │       ├── transparency_estimator.py # Оценка прозрачности
+│   │       └── pollution_analyzer.py # Анализ загрязнения
+│   ├── agro/                 # Модуль "Агропрогноз"
+│   │   ├── agro_conditions_script.py
+│   │   ├── plant_monitor_script.py
+│   │   ├── __init__.py
+│   │   └── _processes/       # НОВОЕ: Подпроцессы агропрогноза
+│   │       ├── soil_analyzer.py # Анализ почвы
+│   │       ├── growth_predictor.py # Прогноз роста
+│   │       └── harvest_optimizer.py # Оптимизация сбора
+│   └── settings/             # НОВОЕ: Скрипты настроек
+│       ├── add_location_script.py
+│       ├── remove_location_script.py
+│       ├── set_default_location_script.py
+│       └── _processes/       # Подпроцессы настроек
+│           ├── coordinate_validator.py # Валидация координат
+│           └── geocoder.py   # Геокодирование названий
+├── workers/                  # НОВОЕ: Фоновые воркеры
+│   ├── data_fetcher_worker.py # Воркер получения данных
+│   ├── notification_worker.py # Воркер уведомлений
+│   ├── health_check_worker.py # Воркер проверки состояния
+│   └── cleanup_worker.py     # Воркер очистки
+├── tests/                    # НОВОЕ: Тесты
+│   ├── unit/                 # Модульные тесты
+│   ├── integration/          # Интеграционные тесты
+│   └── stress/               # Стресс-тесты
+├── logs/                     # Папка для логов
+│   ├── app.log              # Основной лог
+│   ├── process.log          # Лог процессов
+│   ├── errors.log           # Лог ошибок
+│   └── debug.log            # Отладочный лог
+├── temp/                     # НОВОЕ: Временные файлы
+│   ├── cache/               # Кэш данных
+│   ├── uploads/             # Загрузки
+│   └── reports/             # Временные отчеты
+├── data/                     # Папка для постоянных файлов
+├── docs/                     # НОВОЕ: Документация
+│   ├── architecture.md      # Архитектура
+│   ├── api_docs.md          # API документация
+│   └── deployment.md        # Инструкция развертывания
+└── requirements.txt
+
+
+Отлично, Архыс! Принимаю — сохраняю **полную исходную структуру** с её богатой модульностью, включая `workers/`, `_processes/`, `monitoring/`, `models/` и т.д. Теперь построю **точную блочно-процедурную спецификацию взаимодействий**, **строго опираясь на эту структуру**, без упрощений.
+
+Цель — дать тебе **готовый к реализации «дорожный план»** с чёткими интерфейсами, запретами на импорты и маршрутами данных.
+
+---
+
+## 🔷 ОБЩИЕ ПРАВИЛА ВЗАИМОДЕЙСТВИЯ (для всей архитектуры)
+
+### ✅ Разрешено:
+- **bot.py → core/** (все подмодули)
+- **process_manager.py → core/** и **scripts/**
+- **scripts/ → core/utils, core/db/local_*, core/models**
+- **workers/ → core/** и **scripts/**
+- **core/ → внутри себя** (но без циклов)
+- **scripts/ → свои _processes/**
+- **settings-скрипты → core/db/central_db.py**
+
+### ❌ Запрещено:
+- **scripts/ → bot.py**, **workers/ → bot.py**
+- **core/ → scripts/**, **core/ → workers/**
+- **scripts/ → core/db/central_db.py** (кроме `/settings/`)
+- **_processes/ → scripts/** (только наоборот)
+- Любые **циклические импорты**
+
+---
+
+# 🔷 БЛОК 0. ПУСК СИСТЕМЫ
+
+### Процедура: `python bot.py`
+```python
+# bot.py
+from core.db.central_db import init_db
+from core.monitoring.health_checker import start_health_check
+from workers.health_check_worker import HealthCheckWorker
+from core.event_bus import subscribe_async  # ← см. ниже
+
+def main():
+    # 1. Инициализация БД
+    init_db()  # создаёт таблицы, включая user_locations
+    
+    # 2. Запуск фоновых воркеров (асинхронно)
+    health_worker = HealthCheckWorker()
+    asyncio.create_task(health_worker.run())
+    
+    # 3. Подписка на события
+    subscribe_async("task_result", handle_task_result)
+    
+    # 4. Запуск бота
+    bot.polling()
+```
+
+> ✅ **bot.py** — единственный файл, который запускается напрямую.
+
+---
+
+# 🔷 БЛОК 1. УПРАВЛЕНИЕ ЛОКАЦИЯМИ (settings)
+
+## 1.1. Фронт → добавление локации
+```python
+# bot.py
+from scripts.settings.add_location_script import run as add_location  # ← НЕТ! Нельзя импортировать скрипты
+
+# ВМЕСТО ЭТОГО:
+from process_manager import enqueue_script
+
+async def on_location_received(user_id, lat, lon):
+    name = "Дом"  # или запросить
+    task = await enqueue_script(
+        script_path="scripts/settings/add_location_script.py",
+        args=[str(user_id), str(lat), str(lon), name]
+    )
+```
+
+> ✅ Все скрипты запускаются **только через `process_manager`**, **НЕ импортируются**!
+
+## 1.2. Скрипт настройки
+```python
+# scripts/settings/add_location_script.py
+import sys
+from core.db.central_db import add_user_location  # ← разрешено для settings!
+from core.utils.geocoder import reverse_geocode
+
+def main():
+    user_id, lat, lon, name = sys.argv[1:5]
+    if not name:
+        name = reverse_geocode(lat, lon) or f"Точка {lat}"
+    
+    loc_id = add_user_location(user_id, name, float(lat), float(lon))
+    
+    # Вывод результата
+    print(f"EVENT_TYPE:location_saved")
+    print(f"USER_ID:{user_id}")
+    print(f"MESSAGE:✅ Локация '{name}' сохранена")
+    print(f"LOCATION_ID:{loc_id}")
+
+if __name__ == "__main__":
+    main()
+```
+
+## 1.3. Подпроцесс валидации (опционально)
+```python
+# scripts/settings/_processes/coordinate_validator.py
+from core.utils.validator import validate_coordinates
+
+def safe_add_location(user_id, lat, lon, name):
+    if not validate_coordinates(lat, lon):
+        raise ValueError("Invalid coordinates")
+    # ... продолжение
+```
+
+---
+
+# 🔷 БЛОК 2. АНАЛИТИЧЕСКИЙ СКРИПТ (на примере `weather_today_script.py`)
+
+## 2.1. Запуск из бота
+```python
+# bot.py
+async def weather_command(user_id):
+    locations = get_user_locations(user_id)  # from core.db.central_db
+    lat, lon = select_location(locations)    # логика выбора
+    await enqueue_script("scripts/weather/weather_today_script.py", [lat, lon, user_id])
+```
+
+## 2.2. Основной скрипт
+```python
+# scripts/weather/weather_today_script.py
+import sys
+from core.utils.api_client import OpenMeteoClient
+from scripts.weather._processes.data_fetcher import fetch_weather_data
+from scripts.weather._processes.interpolator import interpolate_to_hourly
+from scripts.weather._processes.formatter import format_weather_report
+from core.utils.cache_manager import save_plot_to_data
+from core.db.local_db_weather import cache_weather
+
+def main():
+    lat, lon, user_id = map(float, sys.argv[1:3]) + [int(sys.argv[3])]
+    
+    # Подпроцессы
+    raw = fetch_weather_data(lat, lon)            # → _processes/data_fetcher.py
+    hourly = interpolate_to_hourly(raw)           # → _processes/interpolator.py
+    report = format_weather_report(hourly)        # → _processes/formatter.py
+    
+    # Кэширование
+    cache_weather(user_id, lat, lon, hourly)      # → core/db/local_db_weather.py
+    graph_path = save_plot_to_data(report, f"weather_{user_id}.png")
+    
+    # Вывод
+    print(f"EVENT_TYPE:task_result")
+    print(f"RESULT_TYPE:graph")
+    print(f"USER_ID:{user_id}")
+    print(f"FILE_PATH:{graph_path}")
+
+if __name__ == "__main__":
+    main()
+```
+
+> ✅ Каждый скрипт — **оркестратор подпроцессов**, не содержит логики внутри.
+
+---
+
+# 🔷 БЛОК 3. ПОДПРОЦЕССЫ (_processes/)
+
+## Пример: `scripts/weather/_processes/data_fetcher.py`
+```python
+# scripts/weather/_processes/data_fetcher.py
+from core.utils.api_client import OpenMeteoClient
+from core.utils.error_handler import log_and_raise
+
+def fetch_weather_data(lat: float, lon: float):
+    try:
+        client = OpenMeteoClient()
+        return client.get_hourly_forecast(lat, lon, days=7)
+    except Exception as e:
+        log_and_raise("Weather API fetch failed", e)
+```
+
+> ✅ Подпроцессы — **чистые функции**, **без побочных эффектов**, **без вывода**.
+
+---
+
+# 🔷 БЛОК 4. PROCESS MANAGER + EVENT BUS
+
+## 4.1. Запуск задачи
+```python
+# process_manager.py
+import asyncio, subprocess
+from core.event_bus import emit_event
+
+async def enqueue_script(script_path: str, args: list[str]):
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, script_path, *args,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    asyncio.create_task(_wait_and_parse(proc))
+```
+
+## 4.2. Парсинг результата
+```python
+# process_manager.py
+async def _wait_and_parse(proc):
+    stdout, stderr = await proc.communicate()
+    lines = stdout.decode().strip().split('\n')
+    event = {}
+    for line in lines:
+        if ':' in line:
+            key, val = line.split(':', 1)
+            event[key.strip()] = val.strip()
+    
+    if proc.returncode == 0:
+        await emit_event("task_result", event)
+    else:
+        await emit_event("task_error", {"error": stderr.decode(), **event})
+```
+
+## 4.3. Шина событий (НЕВИДИМАЯ для всех, кроме подписчиков)
+```python
+# core/event_bus.py
+_listeners = {}
+
+def subscribe(event_type: str, handler):
+    _listeners.setdefault(event_type, []).append(handler)
+
+async def emit_event(event_type: str,  dict):
+    for handler in _listeners.get(event_type, []):
+        if asyncio.iscoroutinefunction(handler):
+            asyncio.create_task(handler(data))
+        else:
+            handler(data)
+```
+
+> ✅ `core/event_bus.py` — **0 зависимостей**, **0 импортов извне**.
+
+---
+
+# 🔷 БЛОК 5. ОБРАТНАЯ СВЯЗЬ → БОТ
+
+```python
+# bot.py
+from core.event_bus import subscribe
+
+async def handle_task_result(event: dict):
+    user_id = int(event["USER_ID"])
+    if event["RESULT_TYPE"] == "graph":
+        await bot.send_photo(user_id, open(event["FILE_PATH"], "rb"))
+    elif "MESSAGE" in event:
+        await bot.send_message(user_id, event["MESSAGE"])
+
+# При старте:
+subscribe("task_result", handle_task_result)
+subscribe("task_error", handle_task_result)
+```
+
+> ✅ Бот **подписан**, но **никто не импортирует bot.py**.
+
+---
+
+# 🔷 БЛОК 6. МОДЕЛИ И МОНИТОРИНГ
+
+## 6.1. Использование ML-модели
+```python
+# scripts/meteo/impact_forecast_script.py
+from core.models.meteo_model import MeteoImpactModel
+
+def main():
+    # ... получение данных ...
+    model = MeteoImpactModel()
+    risk_score = model.predict(meteo_features)
+    # ... вывод ...
+```
+
+## 6.2. Мониторинг из workers/
+```python
+# workers/health_check_worker.py
+from core.monitoring.health_checker import check_db, check_api
+from core.monitoring.performance_monitor import log_cpu_usage
+
+class HealthCheckWorker:
+    async def run(self):
+        while True:
+            check_db()
+            check_api()
+            log_cpu_usage()
+            await asyncio.sleep(300)
+```
+
+---
+
+# 🔷 БЛОК 7. ЛОГИРОВАНИЕ И ОШИБКИ
+
+- Все модули используют **единый логгер** из `config/logging_config.py`
+- Ошибки в скриптах → `stderr` → `process_manager` → событие → бот
+- Критические ошибки → `logs/errors.log`
+- Отладка → `logs/debug.log`
+
+---
+
+# 🔷 БЛОК 8. ИЕРАРХИЯ ИМПОРТОВ (точная карта)
+
+```
+bot.py
+├─ core/event_bus.py
+├─ core/db/central_db.py
+├─ process_manager.py
+│  ├─ core/event_bus.py
+│  └─ (subprocess → scripts/ — НЕ импорт!)
+│
+scripts/weather/weather_today_script.py
+├─ scripts/weather/_processes/data_fetcher.py
+│  └─ core/utils/api_client.py
+├─ core/db/local_db_weather.py
+└─ core/utils/cache_manager.py
+
+scripts/settings/add_location_script.py
+└─ core/db/central_db.py  ← ЕДИНСТВЕННОЕ исключение для записи
+
+workers/notification_worker.py
+├─ core/event_bus.py
+└─ core/db/process_log_db.py
+```
+
+---
+
+# ✅ ИТОГ: КАК РЕАЛИЗОВЫВАТЬ
+
+1. **Создай папки и `__init__.py`** по структуре.
+2. **Реализуй `core/event_bus.py`** — он нужен всем.
+3. **Сделай `process_manager.py`** — он запускает всё.
+4. **Напиши `bot.py`** — только ввод/вывод + подписка на события.
+5. **Для каждой функции**:
+   - Создай скрипт в `scripts/модуль/`
+   - Разбей логику на подпроцессы в `_processes/`
+   - Используй `core/utils/` для общих задач
+   - Сохраняй результаты в `core/db/local_db_*`
+6. **Настройки локаций** — единственные, кто пишет в `central_db`.
+
+---
+
+Хочешь, чтобы я сгенерировал **полные заготовки** для:
+- `core/event_bus.py`
+- `process_manager.py`
+- `scripts/weather/weather_today_script.py` + его `_processes/`
+- `bot.py` (часть с подпиской)
+
+Готов продолжить!
+Встроенный функционал управления координатами
+1. Центральная База Данных (ЦБД)
+Новая таблица: user_locations
+user_id (int, primary key, foreign key -> users table)
+location_id (int, primary key, autoincrement)
+name (str) - название точки (например, "Дом", "Дача", "Работа").
+lat (float) - широта.
+lon (float) - долгота.
+is_default (bool) - флаг, указывающий, является ли точка точкой по умолчанию для пользователя.
+2. Меню "Настройки"
+Новый подпункт: "Мои точки" (или "Координаты", "Локации").
+2.1. Просмотр точек: Показывает список сохранённых точек пользователя с кнопками "Выбрать", "Редактировать", "Удалить". Кнопка "Назначить по умолчанию".
+2.2. Добавить точку:
+Бот запрашивает: "Пришлите геопозицию или введите координаты в формате 'широта, долгота'."
+Пользователь отправляет геопозицию или текст.
+Бот обрабатывает ввод, определяет название (можно запросить отдельно или использовать "Точка X").
+Вызывает scripts/settings/add_location_script.py (аргументы: user_id, lat, lon, name).
+Скрипт сохраняет точку в user_locations (ЦБД).
+2.3. Редактировать точку: Выбирается точка из списка -> ввод нового названия/координат (через геопозицию или текст).
+2.4. Удалить точку: Выбирается точка -> подтверждение -> вызов scripts/settings/remove_location_script.py (аргументы: user_id, location_id).
+3. Интеграция в основные функции
+При вызове любого центрального скрипта (например, weather_today_script.py, agro_conditions_script.py):
+bot.py получает команду от пользователя.
+bot.py вызывает core/db/central_db.py -> get_user_locations(user_id).
+Если у пользователя только одна точка, или у него есть одна точка, помеченная как is_default, и команда не предполагает выбор точки (например, "Прогноз по умолчанию"), то bot.py автоматически использует эту точку и запускает центральный скрипт с её координатами.
+Если у пользователя несколько точек и ни одна не помечена как is_default, или команда предполагает выбор (например, пользователь нажал "Прогноз для..."), то bot.py отправляет сообщение с inline-кнопками, где каждая кнопка соответствует одной из точек (name точки). При нажатии кнопки, bot.py запоминает выбранные координаты и запускает центральный скрипт с ними.
+Центральный скрипт получает координаты как аргументы командной строки и работает с ними.
+4. Вспомогательные скрипты для настроек (опционально, но логично)
+scripts/settings/add_location_script.py: Использует core/db/central_db.py для добавления записи в user_locations.
+scripts/settings/remove_location_script.py: Использует core/db/central_db.py для удаления записи из user_locations.
+scripts/settings/set_default_location_script.py: Использует core/db/central_db.py для установки флага is_default.
+Преимущества:
+Унификация: Все функции (Погода, Метео, Атмосфера, Агропрогноз) используют один и тот же механизм получения координат.
+Удобство: Пользователь может управлять своими точками в одном месте.
+Гибкость: Можно выбирать точку для каждой команды или использовать точку по умолчанию.
+Масштабируемость: Легко добавить больше точек или уточнить логику выбора (например, "последняя использованная").
+Изоляция: Центральные скрипты не заботятся о том, как координаты были получены. Им просто передаются lat и lon.
+Изменения в архитектуре:
+core/db/central_db.py должен получить функции:
+get_user_locations(user_id)
+add_user_location(user_id, name, lat, lon, is_default=False)
+update_user_location(user_id, location_id, name=None, lat=None, lon=None, is_default=None)
+remove_user_location(user_id, location_id)
+set_default_location(user_id, location_id)
+bot.py должен содержать логику:
+Отображения списка точек с кнопками.
+Обработки нажатий на кнопки выбора точки.
+Вызова get_user_locations перед запуском центрального скрипта.
+Центральные скрипты получают координаты как аргументы и не работают с ЦБД напрямую для получения координат.
