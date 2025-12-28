@@ -1,183 +1,124 @@
 # bot.py
-import asyncio
+# -*- coding: utf-8 -*-
+"""
+Основной скрипт бота с обновлённым интерфейсом управления локациями.
+"""
 import logging
-from pathlib import Path
-from telegram import Update, Location
+import sys
+from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
-    ContextTypes,
-    filters
+    CallbackQueryHandler,
+    ConversationHandler,
+    filters,
+    ContextTypes
 )
+from telegram.constants import ParseMode  # ← ДОБАВЬТЕ ЭТУ СТРОКУ
+from process_manager import process_manager
 
-# Импорты ядра
-from config.bot_config import BOT_TOKEN
-from core.process_manager import enqueue_script, init_process_manager
-from core.event_bus import subscribe_async
-from core.db.central_db import get_user_locations, add_user
-from core.utils.error_handler import log_exception
-from core.db.central_db import init_db as init_central_db
-
-# Настройка логгера
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
+# Импорт обработчиков локаций
+from scripts.weather.location_fsm import (
+    show_locations_menu,
+    handle_location_callback,
+    handle_text_input,
+    cancel_add,
+    ADD_LOCATION_INPUT,
+    handle_location_geo
 )
-logger = logging.getLogger(__name__)
-
-# Хранилище активных задач: user_id → task_id (опционально)
-_ACTIVE_TASKS: dict[int, str] = {}
-
-# === ОБРАБОТЧИКИ СОБЫТИЙ ===
-async def post_init(application: Application):
-    global _BOT_APP
-    _BOT_APP = application
-
-    # 🔥 ИНИЦИАЛИЗАЦИЯ БАЗ ДАННЫХ
-    init_central_db()  # ← ДОБАВЬ ЭТУ СТРОКУ
-
-    init_process_manager()
-    subscribe_async("task_result", on_task_result)
-    subscribe_async("task_error", on_task_error)
-    logger.info("✅ Бот, БД и process_manager инициализированы")
-async def on_task_result(data: dict):
-    """Обработчик результата выполнения скрипта."""
-    user_id = data.get("user_id")
-    if not user_id:
-        logger.warning("Получено событие без user_id: %s", data)
-        return
-
-    try:
-        # Преобразуем user_id в int (Telegram использует int)
-        user_id = int(user_id)
-    except (ValueError, TypeError):
-        logger.error("Некорректный user_id: %s", user_id)
-        return
-
-    # Отправляем результат — зависит от RESULT_TYPE
-    result_type = data.get("RESULT_TYPE", "text")
-    message = data.get("MESSAGE", "Результат готов.")
-    file_path = data.get("FILE_PATH")
-
-    # Получаем приложение (Application) через глобальную ссылку (см. main)
-    app = globals().get("_BOT_APP")
-    if not app:
-        logger.error("Нет ссылки на Telegram Application!")
-        return
-
-    try:
-        if file_path and Path(file_path).exists():
-            with open(file_path, "rb") as f:
-                await app.bot.send_photo(chat_id=user_id, photo=f, caption=message)
-        else:
-            await app.bot.send_message(chat_id=user_id, text=message)
-        logger.info("✅ Отправлен результат пользователю %s", user_id)
-    except Exception as e:
-        log_exception(e, f"Ошибка отправки результата пользователю {user_id}")
-        await app.bot.send_message(chat_id=user_id, text="❌ Не удалось отправить результат.")
-
-async def on_task_error(data: dict):
-    """Обработчик ошибки выполнения скрипта."""
-    user_id = data.get("user_id")
-    if not user_id:
-        return
-    try:
-        user_id = int(user_id)
-        error_msg = data.get("ERROR_MESSAGE", "Произошла ошибка при обработке запроса.")
-        app = globals().get("_BOT_APP")
-        if app:
-            await app.bot.send_message(chat_id=user_id, text=error_msg)
-    except Exception as e:
-        log_exception(e, "Ошибка в on_task_error")
-
-# === КОМАНДЫ TELEGRAM ===
+from scripts.weather.weather_handler import (
+    weather_menu,
+    weather_callback,
+    weather_back_callback
+)
+# === Обработчики команд ===
+async def global_navigation_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка глобальных навигационных кнопок."""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "nav_main":
+        await start(update, context)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    add_user(user.id)  # ← БЕЗ await
-    await update.message.reply_text(
-        f"Привет, {user.first_name}!\n"
-        "📍 Отправь геопозицию, чтобы сохранить локацию."
+    """Главное меню."""
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=(
+            "🌤️ <b>Метео-бот</b>\n\n"
+            "Выберите действие:\n"
+            "• /weather — прогноз погоды\n"
+            "• /locations — управление локациями"
+        ),
+        parse_mode=ParseMode.HTML
     )
-async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    # ✅ УБРАЛИ await
-    locations = get_user_locations(user_id)
-
-    if not locations:
-        await update.message.reply_text(
-            "❌ У вас нет сохранённых локаций. Отправьте геопозицию!"
-        )
-        return
-
-    # Берём первую локацию (можно улучшить — выбор через кнопки)
-    loc = locations[0]
-    lat, lon = loc["lat"], loc["lon"]
-
-    try:
-        task_id = await enqueue_script(
-            "scripts/weather/weather_today_script.py",
-            [str(lat), str(lon), str(user_id)]
-        )
-        _ACTIVE_TASKS[user_id] = task_id
-        await update.message.reply_text("⏳ Запрашиваю прогноз погоды...")
-        logger.info("Запущен weather_today_script для user=%s, loc=(%s, %s)", user_id, lat, lon)
-    except Exception as e:
-        log_exception(e, "Ошибка запуска weather_today_script")
-        await update.message.reply_text("❌ Не удалось запустить прогноз.")
-async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    location: Location = update.message.location
-    lat, lon = location.latitude, location.longitude
-
-    try:
-        # Запускаем скрипт добавления локации
-        task_id = await enqueue_script(
-            "scripts/settings/add_location_script.py",
-            [str(user_id), str(lat), str(lon), "📍 Моя локация"]
-        )
-        await update.message.reply_text("✅ Локация сохранена!")
-        logger.info("Добавлена локация для user=%s: (%s, %s)", user_id, lat, lon)
-    except Exception as e:
-        log_exception(e, "Ошибка добавления локации")
-        await update.message.reply_text("❌ Не удалось сохранить локацию.")
-
-# === ЗАПУСК ===
-
-async def post_init(application: Application):
-    """Инициализация после старта бота."""
-    global _BOT_APP
-    _BOT_APP = application
-    init_process_manager()
-    subscribe_async("task_result", on_task_result)
-    subscribe_async("task_error", on_task_error)
-    logger.info("✅ Бот и process_manager инициализированы")
-
-
-
-async def post_init(application: Application):
-    global _BOT_APP
-    _BOT_APP = application
-
-    # 🔥 КРИТИЧЕСКИ ВАЖНО: ИНИЦИАЛИЗИРОВАТЬ БД ПЕРВОЙ!
-    init_central_db()  # ← ЭТА СТРОКА ДОЛЖНА БЫТЬ!
-
-    init_process_manager()
-    subscribe_async("task_result", on_task_result)
-    subscribe_async("task_error", on_task_error)
-    logger.info("✅ Бот, БД и process_manager инициализированы")
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    logging.error(f"⚠️ Исключение при обработке: {context.error}", exc_info=True)
+    if update and hasattr(update, 'update_id'):
+        logging.error(f"Update ID: {update.update_id}")
+    # Можно отправить сообщение админу
+# === Основная функция запуска ===
 def main():
-    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    # Инициализация
+    process_manager.initialize_sync()
+    logging.info("🚀 Запуск бота")
+    if not process_manager.config.telegram_token:
+        logging.critical("❌ TELEGRAM_BOT_TOKEN не задан")
+        raise ValueError(" TELEGRAM_BOT_TOKEN не задан в .env!")
 
-    # Регистрация обработчиков
+    # Создание приложения
+    app = Application.builder().token(process_manager.config.telegram_token).build()
+
+    # === Регистрация обработчиков ===
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("weather", weather))
-    app.add_handler(MessageHandler(filters.LOCATION, handle_location))
 
-    logger.info("🚀 Запуск Telegram-бота...")
-    app.run_polling()
+    # Основное меню локаций — обычный CommandHandler
+    app.add_handler(CommandHandler("locations", show_locations_menu))
 
-if __name__ == "__main__":
+    # FSM только для текстового ввода (запускается через inline-кнопку "add_text")
+    add_text_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(handle_location_callback, pattern="^add_text$")
+        ],
+        states={
+            ADD_LOCATION_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input)
+            ]
+        },
+        fallbacks=[
+            CommandHandler("cancel", cancel_add)
+        ],
+        per_user=True,
+        allow_reentry=True
+    )
+    app.add_handler(add_text_conv)
+
+    # Обработка ВСЕХ inline-кнопок (включая add_geo, set_default, delete, add_new)
+    app.add_handler(CallbackQueryHandler(handle_location_callback))
+    #app.add_handler(MessageHandler(filters.LOCATION, handle_location_geo))
+    app.add_error_handler(error_handler)
+    app.add_handler(MessageHandler(filters.LOCATION, handle_location_geo))
+    app.add_handler(CallbackQueryHandler(global_navigation_handler, pattern="^nav_main$"))
+    app.add_handler(CommandHandler("weather", weather_menu))
+    app.add_handler(CallbackQueryHandler(weather_callback, pattern="^weather_loc:"))
+    app.add_handler(CallbackQueryHandler(weather_back_callback, pattern="^weather_back$"))
+    
+    # === Запуск ===
+    print("🚀 Бот запущен. Используйте /locations.")
+    print("Нажмите Ctrl+C для остановки.")
+
+    try:
+        app.run_polling(drop_pending_updates=True)
+    except KeyboardInterrupt:
+        print("\n🛑 Остановка по запросу пользователя.")
+    finally:
+        process_manager.shutdown_sync()
+        print("✅ Бот завершил работу.")
+
+
+if __name__ == "__main__":  # ← Без пробела: `__name__`
+    if sys.platform == "win32":
+        import asyncio
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
     main()

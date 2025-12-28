@@ -9,3 +9,8 @@ contextily==2.2.1
 matplotlib
 os
 scipy
+python-telegram-bot>=20.7
+Jinja2>=3.1
+aiosqlite>=0.19
+httpx>=0.27  # для async HTTP
+cachetools>=5.3

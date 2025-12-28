@@ -1,0 +1,302 @@
+Отлично. Ниже — **полный перечень необходимых скриптов и модулей** для реализации описанного пользовательского сценария, строго адаптированный под вашу архитектуру и требования:
+
+- ✅ безопасность (санитизация, экранирование, параметризованные запросы),  
+- ✅ однозначность локаций,  
+- ✅ friendly-интерфейс (FSM + кнопки),  
+- ✅ интеграция с `central_db`, `local_db_weather`, `process_log_db`,  
+- ✅ контроль ошибок и логирование.
+
+Все компоненты сгруппированы по слоям и сопровождаются **точным описанием функционала**, **входами/выходами** и **связями с другими модулями**.
+
+---
+
+## 🔷 I. Ядро: вспомогательные утилиты (`core/utils/`)
+
+### 1. `validator.py`
+**Функционал**: санитизация и базовая валидация.
+```python
+def sanitize_user_input(text: str) -> str:
+    """Удаляет опасные символы, ограничивает длину, экранирует HTML."""
+    ...
+
+def validate_coordinates(lat: float, lon: float) -> bool:
+    """Проверяет: -90 ≤ lat ≤ 90, -180 ≤ lon ≤ 180."""
+    ...
+```
+**Используется в**: `coordinate_manager.py`, `location_fsm.py`, `_services/`.
+
+---
+
+### 2. `coordinate_manager.py`
+**Функционал**: каноническое разрешение локаций.
+```python
+class LocationResolver:
+    def resolve(self, input_text: str) -> CanonicalLocation:
+        """Принимает текст или 'lat,lon' → возвращает CanonicalLocation."""
+        ...
+
+    def resolve_from_coords(self, lat: float, lon: float) -> CanonicalLocation:
+        """Только по координатам (после валидации)."""
+        ...
+```
+**Зависимости**: `validator.py`, `api_client.py` (для геокодера), `cache_manager.py`.
+
+**Используется в**: `location_fsm.py`, `weather_handler.py`.
+
+---
+
+### 3. `api_client.py`
+**Функционал**: безопасные HTTP-запросы с ретраями.
+```python
+class WeatherAPIClient:
+    def fetch_current(self, lat: float, lon: float) -> dict:
+        """Вызов OpenWeather/Yr с timeout=10s, retry=3."""
+        ...
+
+class GeocodingClient:
+    def geocode(self, query: str) -> Tuple[float, float]:
+        """Вызов Nominatim/OpenCage."""
+        ...
+```
+**Используется в**: `LocationResolver`, `weather_fetcher.py`.
+
+---
+
+### 4. `error_handler.py`
+**Функционал**: централизованная обработка исключений.
+```python
+@contextmanager
+def safe_task(task_name: str, user_id: int = None):
+    """Логирует ошибку в process_log_db и errors.log при исключении."""
+    ...
+```
+**Используется в**: все обработчики (`location_fsm.py`, `weather_handler.py`).
+
+---
+
+## 🔷 II. Базы данных (`core/db/`)
+
+### 1. `central_db.py`
+**Функционал**: работа с пользователями и локациями.
+```python
+def create_or_get_user(telegram_id: int) -> User:
+    """Создаёт или возвращает пользователя."""
+
+def add_user_location(
+    user_id: int,
+    location_id: str,    # geo:55.7558:37.6176
+    display_name: str,
+    lat: float,
+    lon: float,
+    is_default: bool = False
+) -> None:
+    """Добавляет локацию. Если is_default=True — снимает флаг с других."""
+
+def get_default_location(user_id: int) -> Optional[Location]:
+    """Возвращает локацию по умолчанию."""
+
+def set_default_location(user_id: int, location_id: str) -> None:
+    """Меняет локацию по умолчанию."""
+
+def get_user_locations(user_id: int) -> List[Location]:
+    """Список всех локаций пользователя."""
+```
+**Схема таблицы `user_locations`**:
+```sql
+CREATE TABLE user_locations (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    location_id TEXT NOT NULL UNIQUE,  -- geo:lat:lon
+    display_name TEXT NOT NULL,
+    lat REAL NOT NULL,
+    lon REAL NOT NULL,
+    is_default BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(telegram_id)
+);
+```
+
+---
+
+### 2. `local_db_weather.py`
+**Функционал**: кэширование погоды.
+```python
+def has_fresh_data(lat: float, lon: float, max_age_minutes: int = 15) -> bool:
+    """Проверяет, есть ли свежие данные."""
+
+def get_weather(lat: float, lon: float) -> WeatherData:
+    """Возвращает данные из кэша."""
+
+def save_weather(lat: float, lon: float,  dict, ttl_hours: int = 24) -> None:
+    """Сохраняет, если хэш данных отличается от предыдущего."""
+```
+**Схема**:
+```sql
+CREATE TABLE weather_cache (
+    cache_key TEXT PRIMARY KEY,  -- weather:current:55.7558:37.6176:2025-12-27
+    lat REAL NOT NULL,
+    lon REAL NOT NULL,
+    data_hash TEXT NOT NULL,     -- хэш JSON-данных
+    data JSON NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL
+);
+```
+
+---
+
+## 🔷 III. Скрипты: логика взаимодействия (`scripts/weather/`)
+
+### 1. `location_fsm.py`
+**Функционал**: FSM для управления локациями (aiogram).
+```python
+class LocationState(StatesGroup):
+    waiting_input = State()
+
+@router.message(Command("locations"))
+async def show_locations_menu(message: Message):
+    """Показывает список локаций + кнопки управления."""
+
+@router.callback_query(lambda c: c.data.startswith("loc_set_default:"))
+async def set_default_location(callback: CallbackQuery):
+    """Меняет локацию по умолчанию."""
+
+@router.message(LocationState.waiting_input)
+async def handle_location_input(message: Message, state: FSMContext):
+    """Обрабатывает ввод названия города."""
+    # → вызывает LocationResolver.resolve()
+    # → сохраняет через central_db.add_user_location()
+```
+**Зависимости**: `central_db.py`, `coordinate_manager.py`, `validator.py`.
+
+---
+
+### 2. `weather_handler.py`
+**Функционал**: обработка `/weather`.
+```python
+@router.message(Command("weather"))
+async def handle_weather_request(message: Message):
+    user_id = message.from_user.id
+    loc = central_db.get_default_location(user_id)
+    if not loc:
+        await message.answer("Сначала добавьте локацию: /locations")
+        return
+
+    with safe_task("weather_request", user_id):
+        if local_db_weather.has_fresh_data(loc.lat, loc.lon):
+            data = local_db_weather.get_weather(loc.lat, loc.lon)
+        else:
+            raw = WeatherAPIClient().fetch_current(loc.lat, loc.lon)
+            validator.validate_weather_response(raw)  # ← кастомная валидация
+            local_db_weather.save_weather(loc.lat, loc.lon, raw)
+            data = raw
+
+        text = weather_presenter.format_for_telegram(data, loc.display_name)
+        await message.answer(text, parse_mode="HTML")
+```
+**Зависимости**: `local_db_weather.py`, `central_db.py`, `api_client.py`, `weather_presenter.py`.
+
+---
+
+### 3. `_services/weather_presenter.py`
+**Функционал**: безопасное форматирование.
+```python
+def format_for_telegram( dict, location_name: str) -> str:
+    env = Environment(
+        loader=PackageLoader("scripts.weather", "_io/templates"),
+        autoescape=True  # ← критически важно!
+    )
+    template = env.get_template("current_weather.html.j2")
+    return template.render(
+        location=location_name,
+        temp=data["temp"],
+        description=data["description"],
+        updated=data["dt"]
+    )
+```
+
+---
+
+### 4. `_io/templates/current_weather.html.j2`
+```jinja2
+🌡️ Сейчас в {{ location }}: {{ "%.1f"|format(temp) }}°C
+{% if description %}{{ description|capitalize }}{% endif %}
+📅 Обновлено: {{ updated|datetime_format }}
+💾 Данные кэшированы на 15 минут
+```
+
+---
+
+## 🔷 IV. Воркеры и мониторинг (`workers/`, `core/monitoring/`)
+
+### 1. `cleanup_worker.py`
+**Функционал**: очистка устаревших данных.
+```python
+def cleanup_weather_cache():
+    """Удаляет записи из weather_cache, где expires_at < NOW()."""
+    ...
+
+def cleanup_old_logs():
+    """Удаляет логи старше 30 дней."""
+    ...
+```
+**Запуск**: по cron или через `apscheduler`.
+
+---
+
+## 🔷 V. Тесты (`tests/`)
+
+### Обязательные unit-тесты:
+- `test_validator.py` → санитизация опасных строк.
+- `test_coordinate_manager.py` → нормализация координат.
+- `test_central_db.py` → корректность `is_default`.
+- `test_weather_handler.py` → обработка отсутствия локации.
+
+### Интеграционный тест:
+- Эмуляция `/start` → ввод «Москва» → `/weather` → проверка ответа.
+
+---
+
+## 🔷 Связи между компонентами (диаграмма потока)
+
+```
+[Telegram] 
+    │
+    ▼
+location_fsm.py → coordinate_manager.py → api_client.py (геокодер)
+    │                                      │
+    ▼                                      ▼
+central_db.py ←──────────────────── (сохранение локации)
+    │
+    ▼
+weather_handler.py → central_db.py (получение локации)
+    │
+    ▼
+local_db_weather.py → (кэш есть?) ──Нет──► api_client.py (погода)
+    │                                     │
+    ▼                                     ▼
+weather_presenter.py ←──────────── (сохранение в кэш)
+    │
+    ▼
+[Telegram reply]
+```
+
+---
+
+## 🔷 Что реализовать в первую очередь?
+
+1. **`central_db.py`** — таблицы `users` и `user_locations`.
+2. **`coordinate_manager.py`** — `LocationResolver` с геокодером.
+3. **`location_fsm.py`** — базовый FSM для добавления локации.
+4. **`weather_handler.py`** — минимальный `/weather` с кэшем.
+
+После этого — тесты и безопасность (шаблоны, санитизация).
+
+---
+
+Если вы подтвердите, я предоставлю:
+- полный код `LocationResolver` с fallback на OpenCage,
+- SQL-схемы для SQLite/PostgreSQL,
+- пример FSM-состояния для aiogram 3.x.
+
+Готов к детальной реализации.

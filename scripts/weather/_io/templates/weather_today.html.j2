@@ -1,0 +1,7 @@
+🌤️ <b>Погода сегодня: {{ forecast.location_name }}</b>
+
+{% for point in forecast.points %}
+🕗 {{ point.timestamp.strftime("%H:%M") }} | {{ point.temp }}°C | {{ point.description }}
+{% endfor %}
+
+↩️ Чтобы выбрать другую локацию, нажмите «Назад».
