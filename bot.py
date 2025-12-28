@@ -92,19 +92,45 @@ def main():
         per_user=True,
         allow_reentry=True
     )
+    
+    
+    
+    # === РЕГИСТРАЦИЯ ОБРАБОТЧИКОВ (ПОРЯДОК ВАЖЕН!) ===
+
+    # 1. ОБРАБОТЧИКИ КОМАНД (CommandHandler)
+    #    — имеют высший приоритет, не конфликтуют с другими
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("locations", show_locations_menu))
+    app.add_handler(CommandHandler("weather", weather_menu))
+    app.add_handler(CommandHandler("cancel", cancel_add))  # для ConversationHandler
+
+    # 2. FSM (ConversationHandler)
+    #    — должен быть зарегистрирован ДО универсальных MessageHandler,
+    #      чтобы перехватывать сообщения в состоянии
     app.add_handler(add_text_conv)
 
-    # Обработка ВСЕХ inline-кнопок (включая add_geo, set_default, delete, add_new)
-    app.add_handler(CallbackQueryHandler(handle_location_callback))
-    #app.add_handler(MessageHandler(filters.LOCATION, handle_location_geo))
-    app.add_error_handler(error_handler)
+    # 3. MESSAGE HANDLERS (с фильтрами)
+    #    — обрабатывают обычные сообщения (текст, геопозиция и т.д.)
+    #    — регистрируются ДО CallbackQueryHandler, чтобы не мешать кнопкам
     app.add_handler(MessageHandler(filters.LOCATION, handle_location_geo))
-    app.add_handler(CallbackQueryHandler(global_navigation_handler, pattern="^nav_main$"))
-    app.add_handler(CommandHandler("weather", weather_menu))
+    # ← Другие MessageHandler (текст, фото и т.д.) — сюда
+
+    # 4. CALLBACK QUERY HANDLERS (С pattern — СПЕЦИФИЧНЫЕ)
+    #    — ОБЯЗАТЕЛЬНО с pattern="...", чтобы не перехватывать чужие callback'и
+    #    — регистрируются В НАЧАЛЕ блока callback'ов
     app.add_handler(CallbackQueryHandler(weather_callback, pattern="^weather_loc:"))
     app.add_handler(CallbackQueryHandler(weather_back_callback, pattern="^weather_back$"))
-    
-    # === Запуск ===
+    app.add_handler(CallbackQueryHandler(global_navigation_handler, pattern="^nav_main$"))
+    # ← Другие специфичные callback'и — сюда
+
+    # 5. CALLBACK QUERY HANDLERS (БЕЗ pattern — УНИВЕРСАЛЬНЫЕ)
+    #    — ЛОВЯТ ВСЁ, что не поймали специфичные обработчики
+    #    — ДОЛЖНЫ БЫТЬ ЗАРЕГИСТРИРОВАНЫ ПОСЛЕДНИМИ
+    app.add_handler(CallbackQueryHandler(handle_location_callback))  # ← без pattern
+
+    # 6. ОБРАБОТЧИК ОШИБОК
+    #    — можно регистрировать в любом месте, но логично — в конце
+    app.add_error_handler(error_handler)
     print("🚀 Бот запущен. Используйте /locations.")
     print("Нажмите Ctrl+C для остановки.")
 
